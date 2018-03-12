@@ -1,0 +1,218 @@
+---
+# Install the latest EPEL Repo 
+- name: Install latest EPEL
+  package:
+    name: http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+    state: present
+
+# Enable GlusterFS Repo (Latest stable LTS is 312)
+- name: Enable GlusterFS repo
+  package:
+    name: centos-release-gluster312
+    state: present
+
+# Install Packages that GlusterFS needs
+- name: Install required packages for GlusterFS
+  package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - glusterfs
+    - glusterfs-cli
+    - glusterfs-libs
+    - glusterfs-server
+    - samba
+
+# Down with iptables
+- name: Flush iptables rules
+  command: iptables -F 
+  command: iptables-save 
+
+# Start the glusterd service
+- name: Start gluster service
+  service:
+    name: glusterd
+    state: restarted
+    enabled: yes
+
+# Creates the physical Volume on Data qcow
+- name: Create a new Physical Volume
+  shell: >
+    yes | pvcreate -ff /dev/vdb &&
+    touch /etc/.pvcreated
+  args:
+    creates: /etc/.pvcreated
+
+# Creates a Volume group called vg_gluster on Data qcow 
+- name: Create a Volume Group
+  shell: >
+    vgcreate vg_gluster /dev/vdb &&
+    touch /etc/.vgcreated
+  args:
+    creates: /etc/.vgcreated
+
+# Creates an XFS Brick known as Brick1
+- name: Create the brick1 Logical Volume
+  shell: >
+    lvcreate -L 30G -n brick1 vg_gluster &&
+    touch /etc/.brickscreated
+  args:
+    creates: /etc/.brickscreated
+
+# Installs the XFS file system to the gluster brick
+- name: Setup XFS file systems
+  shell: >
+    mkfs.xfs -f /dev/vg_gluster/brick1 &&
+    touch /etc/.xfssetup
+  args:
+    creates: /etc/.xfssetup
+
+# Creates a directory to mount the Volume group to 
+- name: Create mount points
+  file:
+    dest: "/srv/brick{{ item }}"
+    state: directory
+  with_items:
+    - 1
+
+# Fstab Entries: 
+# /dev/vg_gluster/brick1  /bricks/brick1    xfs     defaults    0 0
+
+# Mount the Volume groups to the mount points we created earlier
+- name: Mount XFS bricks
+  mount:
+    name: "/srv/brick{{ item }}"
+    src: "/dev/vg_gluster/brick{{ item }}"
+    fstype: xfs
+    opts: rw
+    state: mounted
+  with_items:
+    - 1
+
+# Creates a high availibility brick1
+- name: Create brick directory
+  file:
+    dest: "/srv/brick1/brick1HA"
+    state: directory
+
+# Get list of all cnodes in k8s-all-nodes group in inventory file
+- name: Initialize fact for list of k8s-all-nodess
+  set_fact:
+    host_brick_string: ""
+    number_hosts: "{{ ( groups['k8s-all-nodes'] | length ) }}"
+
+# Generate the GlusterFS Connect strings
+- name: Loop through and create "host:/srv/" string given list of cnodes
+  set_fact:
+    host_brick_string: "{{ host_brick_string }}{{ hostvars[item]['inventory_hostname'] }}:/srv/brick1/brick1HA "
+  with_items: "{{ groups['k8s-all-nodes'] }}"
+
+# Get status of the gluster peers
+- name: Get peer status.
+  shell: >
+    gluster peer status
+  register: peer_status
+  when: "'cnode001' in inventory_hostname"
+
+# You can delete a peer with:
+# [root@kube-master ~]# gluster peer detach 192.168.122.17
+
+- name: Probe detach all nodes
+  shell: >
+    gluster peer detach {{ hostvars[item]['inventory_hostname'] }}
+  with_items: "{{ groups['k8s-all-nodes'] }}"
+  ignore_errors: True
+
+# Add the peers that are not showing up in a status 
+- name: Probe each peer not in the status.
+  shell: >
+    gluster peer probe {{ hostvars[item]['inventory_hostname'] }}
+  when: "hostvars[item]['inventory_hostname'] not in peer_status.stdout"
+  with_items: "{{ groups['k8s-all-nodes'] }}"
+  ignore_errors: True
+  when: "'cnode001' in inventory_hostname"
+  
+# Create a list of all the GlusterFS Volumes
+- name: Get list of gluster volumes
+  shell: >
+    gluster volume list
+  register: volume_list
+  when: "'cnode001' in inventory_hostname"
+
+# Create the GlusterFS Volumes
+- name: Create glusterFS volume
+  shell: >
+    gluster volume create glustervol1 replica {{ number_hosts }} transport tcp {{ host_brick_string }}
+  when: '"glustervol" ~ 1 not in volume_list.stdout'
+  when: "'cnode001' in inventory_hostname"
+  ignore_errors: True
+
+# Check the status of the glustervolume
+- name: Get status of volume
+  shell: >
+    gluster volume status glustervol1
+  register: volume_status
+  ignore_errors: yes
+  when: "'cnode001' in inventory_hostname"
+
+# Start the gluster Volume
+- name: Start gluster volume
+  shell: >
+    gluster volume start glustervol1 force
+  when: "volume_status.rc != 0"
+  when: "'cnode001' in inventory_hostname"
+
+- name: Get list of gluster volumes
+  shell: >
+    gluster vol status | grep "Brick" | cut -d " " -f2 | cut -d ":" -f1
+  register: brick_list
+  when:
+     - "'cnode001' in inventory_hostname"
+
+- name: Get list of gluster volumes
+  shell: >
+    gluster vol status | grep "Brick" | cut -d " " -f2 | cut -d ":" -f1
+  register: brick_list2
+  when:
+     - "'cnode001' in inventory_hostname"
+
+#- debug: 
+#    msg: "{{ brick_list.stdout.split()}}"
+
+#- name: ECHO REG
+#  debug: var=brick_list.stdout
+
+# Remove a brick to GlusterFS Volume
+#- name: Remove brick to glusterFS volume
+#  shell: >
+#    gluster volume remove-brick glustervol1 {{ inventory_hostname }}:/srv/brick1/brick1HA start
+#  when: 'inventory_hostname not in brick_list.stdout'
+#  ignore_errors: True
+
+#- name: lol 
+#  command: echo item >> /tmp/bone
+#  when: "'cnode001' in inventory_hostname"
+#  with_items: "{{ groups['k8s-all-nodes'] }}"
+
+
+# Remove a brick to GlusterFS Volume
+- name: Remove brick to glusterFS volume
+  shell: >
+    echo "y" | gluster volume remove-brick glustervol1 replica {{ number_hosts }} {{ item }}:/srv/brick1/brick1HA force 
+#  msg: item
+  when: 
+    - "'cnode001' in inventory_hostname"
+    - item not in groups['k8s-all-nodes']
+  with_items: "{{ brick_list.stdout.split() }}"
+  ignore_errors: True
+  
+# Add a brick to GlusterFS Volume
+- name: Add brick to glusterFS volume
+  shell: >
+    gluster volume add-brick glustervol1 replica {{ number_hosts }} {{ item }}:/srv/brick1/brick1HA force 
+  when: 
+    - "'cnode001' in inventory_hostname"
+    - item not in brick_list2.stdout_lines
+  with_items: "{{ groups['k8s-all-nodes'] }}"
+  ignore_errors: True
+

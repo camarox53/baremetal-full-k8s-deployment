@@ -1,0 +1,90 @@
+---
+
+
+# Get list of all masters in k8s-all-masters group in inventory file
+- name: Initialize fact for list of k8s-all-masters
+  set_fact:
+    etcdservers: ""
+    number_hosts: "{{ ( groups['k8s-all-masters'] | length ) }}"
+
+# Generate the GlusterFS Connect strings
+- name: Loop through and create etcd inventory string given list of cnodes
+  set_fact:
+    etcdservers: "{{ etcdservers }}http://{{ hostvars[item]['inventory_hostname'] }}:2379,"
+  with_items: "{{ groups['k8s-all-masters'] }}"
+
+# Generate the GlusterFS Connect strings
+- name: Loop through and create etcd inventory string given list of cnodes
+  set_fact:
+    master_kube: "{{ etcdservers }}http://{{ hostvars[item]['inventory_hostname'] }}:8080,"
+  with_items: "{{ groups['k8s-all-masters'] }}"
+
+
+
+- template:
+     src: ../../../roles/k8s-prete-master/files/etcd.conf
+     dest: /etc/etcd/etcd.conf
+     owner: root
+     group: root
+     mode: 0644
+
+- template:
+     src: ../../../roles/k8s-prete-master/files/apiserver
+     dest: /etc/kubernetes/apiserver
+     owner: root
+     group: root
+     mode: 0644
+  
+
+
+
+- template:
+     src: ../../../roles/k8s-prete-master/files/kubelet
+     dest: /etc/kubernetes/kubelet
+     owner: root
+     group: root
+     mode: 0644
+
+- systemd:
+    name: etcd
+    state: started
+    enabled: yes
+
+- shell: etcdctl mkdir /kube-centos/network
+  ignore_errors: True
+
+- shell: 'etcdctl mk /kube-centos/network/config "{ \"Network\": \"172.30.0.0/16\", \"SubnetLen\": 24, \"Backend\": { \"Type\": \"vxlan\" } }"'
+  ignore_errors: True
+
+- systemd:
+    name: kube-apiserver
+    state: restarted
+    enabled: yes
+- systemd:
+    name: kube-controller-manager
+    state: restarted
+    enabled: yes
+- systemd:
+    name: kube-scheduler
+    state: restarted
+    enabled: yes
+- systemd:
+    name: flanneld
+    state: restarted
+    enabled: yes
+- systemd:
+    name: kubelet
+    state: restarted
+    enabled: yes
+- systemd:
+    name: flanneld
+    state: restarted
+    enabled: yes
+- systemd:
+    name: docker
+    state: restarted
+    enabled: yes
+
+- shell: 'kubectl config set-cluster default-cluster --server=http://k8s-master001:8080'
+- shell: 'kubectl config set-context default-context --cluster=default-cluster --user=default-admin'
+- shell: 'kubectl config use-context default-context'

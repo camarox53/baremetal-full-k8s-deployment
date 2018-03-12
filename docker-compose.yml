@@ -1,0 +1,13 @@
+version: '3'
+services:
+  base:
+    build: ../../lentos-base
+    hostname: lcsee-www-redirector
+    ports:
+     - "9000:22"  #ssh
+     - "8080:80"  #http
+     - "8081:443" #https
+    cap_add:
+     - "SYS_ADMIN"
+    volumes:
+     - "/sys/fs/cgroup:/sys/fs/cgroup:ro"

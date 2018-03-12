@@ -1,0 +1,48 @@
+---
+- copy:
+     src: ../../../roles/k8s-prete-node/files/kubelet
+     dest: /etc/kubernetes/kubelet
+     owner: root
+     group: root
+     mode: 0644
+
+#- copy:
+#     src: ../../../roles/k8s-prete-node/files/apiserver
+#     dest: /etc/kubernetes/apiserver
+#     owner: root
+#     group: root
+#     mode: 0644
+
+#- copy:
+#     src: ../../../roles/k8s-prete-node/files/config
+#     dest: /etc/kubernetes/config
+#     owner: root
+#     group: root
+#     mode: 0644
+
+- systemd:
+    name: kube-proxy
+    state: restarted
+    enabled: yes
+
+- systemd:
+    name: kubelet
+    state: restarted
+    enabled: yes
+
+- systemd:
+    name: flanneld
+    state: restarted
+    enabled: yes
+
+- systemd:
+    name: docker
+    state: restarted
+    enabled: yes
+
+- shell: 'kubectl config set-cluster default-cluster --server=http://k8s-master001:8080'
+  ignore_errors: True
+- shell: 'kubectl config set-context default-context --cluster=default-cluster --user=default-admin'
+  ignore_errors: True
+- shell: 'kubectl config use-context default-context'
+  ignore_errors: True

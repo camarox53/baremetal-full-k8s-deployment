@@ -1,0 +1,101 @@
+---
+- name: Install Packages needed for the node
+  yum: pkg={{item}} state=installed
+  with_items:
+  - epel-release
+  - vim
+  - screen
+  - net-tools
+  - htop
+  - git
+  - rsync
+  - wget
+  - curl
+  - nfs-utils
+  - openssh-server
+  - ansible
+  - kexec-tools
+  - nmap
+  - xauth
+  - dejavu-lgc-sans-fonts
+  - nagios-plugins-load.x86_64
+  - nagios-plugins-nrpe.x86_64
+  - xauth 
+  - mlocate
+  - wireshark
+  - nmap
+
+## Only needed if running on Physical node hardware. Kickstart turns on firewalld and configures it to only allow 22.
+#- systemd:
+#    name: firewalld
+#    state: stopped
+#    enabled: yes
+
+# Get list of all masters in k8s-all-masters group in inventory file
+- name: Initialize fact for list of k8s-all-masters
+  set_fact:
+    etcdservers: ""
+    number_hosts: "{{ ( groups['k8s-all-masters'] | length ) }}"
+
+# Generate the GlusterFS Connect strings
+- name: Loop through and create etcd inventory string given list of cnodes
+  set_fact:
+    etcdservers: "{{ etcdservers }}http://{{ hostvars[item]['inventory_hostname'] }}:2379,"
+  with_items: "{{ groups['k8s-all-masters'] }}"
+
+# Generate the GlusterFS Connect strings
+- name: Loop through and create etcd inventory string given list of cnodes
+  set_fact:
+    master_kube: "{{ etcdservers }}http://{{ hostvars[item]['inventory_hostname'] }}:8080,"
+  with_items: "{{ groups['k8s-all-masters'] }}"
+
+- copy:
+     src: ../../../roles/k8s-prete-node-common/files/virt7-docker-common-release.repo
+     dest: /etc/yum.repos.d/virt7-docker-common-release.repo
+     owner: root
+     group: root
+     mode: 0644
+
+- command: sudo yum update --enablerepo=virt7-docker-common-release -y 
+
+- name: Install Packages needed for the k8s stuff
+  yum: pkg={{item}} state=installed
+  with_items:
+  - kubernetes
+  - etcd
+  - flannel
+
+- template:
+     src: ../../../roles/k8s-prete-node-common/files/flanneld
+     dest: /etc/sysconfig/flanneld
+     owner: root
+     group: root
+     mode: 0644
+
+- template:
+     src: ../../../roles/k8s-prete-node-common/files/config
+     dest: /etc/kubernetes/config
+     owner: root
+     group: root
+     mode: 0644
+
+- systemd:
+    name: kube-proxy
+    state: restarted
+    enabled: yes
+
+#- systemd:
+#    name: etcd
+#    state: restarted
+#    enabled: yes
+#
+#- systemd:
+#    name: flanneld
+#    state: restarted
+#    enabled: yes
+
+#- systemd:
+#    name: docker
+#    state: restarted
+#    enabled: yes
+

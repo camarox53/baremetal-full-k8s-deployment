@@ -1,0 +1,10 @@
+---
+- name: Provision a redirector docker container
+  hosts: docker
+  remote_user: root
+  vars:
+    - ansible_ssh_port : 9000
+  tasks:
+    - include: ../../../roles/lcsee-nagios-client/tasks/docker-main.yml wp_user=root
+    - include: ../../../roles/lcsee-www-redirector/tasks/docker-main.yml wp_user=root
+    - include: ../../../roles/lcsee-syslog-client/tasks/docker-main.yml wp_user=root

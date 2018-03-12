@@ -1,0 +1,43 @@
+---
+- name: Install Packages needed
+  yum: pkg={{item}} state=installed
+  with_items:
+      - haproxy
+      - keepalived
+
+- copy:
+     src: ../../../roles/prete-haproxy/files/{{item}} 
+     dest: /etc/haproxy
+     owner: root
+     group: root
+     mode: 0600
+  with_items:
+  - haproxy.cfg
+
+- copy:
+     src: ../../../roles/k8s-prete-node-common/files/hosts
+     dest: /etc/hosts
+     owner: root
+     group: root
+     mode: 0644
+
+- copy:
+     src: ../../../roles/prete-haproxy/files/keepalived.conf
+     dest: /etc/keepalived
+     owner: root
+     group: root
+     mode: 0644
+
+- systemd:
+    name: haproxy
+    state: started
+    enabled: yes
+
+- systemd:
+    name: keepalived
+    state: started
+    enabled: yes
+
+- selinux:
+    policy: targeted
+    state: permissive
