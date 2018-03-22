@@ -2,7 +2,7 @@ version: '3'
 services:
   base:
     build: ../../lentos-base
-    hostname: lcsee-www-redirector
+    hostname: www-redirector
     ports:
      - "9000:22"  #ssh
      - "8080:80"  #http

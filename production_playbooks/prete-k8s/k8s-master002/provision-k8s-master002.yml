@@ -1,0 +1,10 @@
+---
+- name: Provision k8s-master002
+  hosts: k8s-master002
+  remote_user: root
+  tasks:
+    - include: ../../../roles/lcsee-keys/tasks/main.yml wp_user=root
+    - include: ../../../roles/k8s-prete-node-common/tasks/main.yml wp_user=root
+    - include: ../../../roles/k8s-prete-master/tasks/main.yml wp_user=root
+    - name: Add the hostname
+      hostname: name={{inventory_hostname}}

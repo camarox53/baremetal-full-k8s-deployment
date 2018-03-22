@@ -1,0 +1,8 @@
+---
+- name: Provision k8s-pnode
+  hosts: k8s-all-nodes
+  remote_user: root
+  tasks:
+    - include: ../../../roles/k8s-prete-gluster/tasks/main.yml wp_user=root
+    - name: Add the hostname
+      hostname: name={{inventory_hostname}}

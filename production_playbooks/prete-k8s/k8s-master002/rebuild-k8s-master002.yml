@@ -1,0 +1,42 @@
+---
+- name: Setup an k8s-master002
+  hosts: pnode002
+  remote_user: root
+  any_errors_fatal: yes
+  vars_prompt:
+
+    name: "confirmation"
+    prompt: "Are you sure you want to run this playbook? It will destroy the current k8s-master002! Answer with 'YES'"
+    default: "NO"
+    private: no
+  tasks:
+    - name: Check Confirmation
+      fail: msg="Playbook run confirmation failed"
+      when: confirmation != "YES"
+    - set_fact:
+        hostname: "k8s-master002"
+        uid: "b212bacb-892b-4f1b-bda9-f53f55629874"
+        ram: "1048576"
+        cpu: "1"
+        storage_pool: "lcsee-kvm1"
+        mac_address: "C0:FF:EE:07:73:46"
+        bridge_device: "virbr0"
+    - copy:
+         remote_src: True
+         src: /srv/lcsee-kvm1/cache/lentos7-base.qcow2
+         dest: "/srv/{{ storage_pool }}/{{ hostname }}.qcow2"
+         owner: root
+         group: root
+         mode: 0755
+    - name: Create the data qcow
+      command: 'qemu-img create -f qcow2 /srv/{{ storage_pool }}/{{ hostname }}_data.qcow2 40G'
+    - virt: 
+        name: "{{ hostname }}"
+        command: define
+        xml: "{{ lookup('template', '../../xml/prete_labmachines.xml') }}"
+    - virt: 
+        name: "{{ hostname }}"
+        state: running
+         
+    - virt: 
+        command: list_vms
