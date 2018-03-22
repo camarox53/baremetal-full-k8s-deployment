@@ -1,0 +1,7 @@
+- Need to add ansible.cfg 
+- update production playbooks with roles and hostname module 
+ -- Remove the commands
+- Add Deployment diagrams 
+- update Gluster playbooks with Ansible module 
+- update inventory with groups for Ansible 
+
